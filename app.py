@@ -114,29 +114,35 @@ def generate_pdf():
     from email.message import EmailMessage
     from datetime import timedelta
 
-    def send_access_email(to_email: str, access_link: str):
-        SMTP_HOST = os.getenv("SMTP_HOST")
-        SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-        SMTP_USER = os.getenv("SMTP_USER")
-        SMTP_PASS = os.getenv("SMTP_PASS")
+def send_access_email(to_email: str, access_link: str) -> None:
+    SMTP_HOST = os.getenv("SMTP_HOST")
+    SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_USER = os.getenv("SMTP_USER")
+    SMTP_PASS = os.getenv("SMTP_PASS")
+    FROM_EMAIL = os.getenv("FROM_EMAIL", "no-reply@seuapp.com")
 
-        msg = EmailMessage()
-        msg["Subject"] = "Seu acesso ao Nota Fácil Lite"
-        msg["From"] = os.getenv("FROM_EMAIL", "no-reply@seuapp.com")
-        msg["To"] = to_email
-        msg.set_content(f\"""Olá!
+    if not all([SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS]):
+        raise RuntimeError("SMTP não configurado")
 
-Obrigado pela compra. Acesse seu app por este link:
-{access_link}
+    msg = EmailMessage()
+    msg["Subject"] = "Seu acesso ao Nota Fácil Lite"
+    msg["From"] = FROM_EMAIL
+    msg["To"] = to_email
 
-Guarde este e-mail. Qualquer dúvida, responda por aqui.
-\""")
+    body = (
+        "Olá!\n\n"
+        "Obrigado pela compra. Acesse seu app por este link:\n"
+        f"{access_link}\n\n"
+        "Guarde este e-mail. Qualquer dúvida, responda por aqui.\n"
+    )
+    msg.set_content(body)
 
-        context = ssl.create_default_context()
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as s:
-            s.starttls(context=context)
-            s.login(SMTP_USER, SMTP_PASS)
-            s.send_message(msg)
+    context = ssl.create_default_context()
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as s:
+        s.starttls(context=context)
+        s.login(SMTP_USER, SMTP_PASS)
+        s.send_message(msg)
+
 
     @app.post("/hotmart/webhook")
     def hotmart_webhook():
