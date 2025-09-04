@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Nota Fácil Lite</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <main class="container">
+    <header>
+      <h1>Nota Fácil <span class="lite">Lite</span></h1>
+      <p class="subtitle">Gere seu recibo/nota simples em PDF, com logo e dados, em segundos.</p>
+    </header>
+
+    <section class="card">
+      {% if payload and payload.email %}
+      <div class="badge">Acesso para: <strong>{{payload.email}}</strong></div>
+      {% endif %}
+      <form id="nota-form" method="post" action="/generate{{ '?t=' + (request.args.get('t') or '') if request and request.args.get('t') else '' }}" enctype="multipart/form-data">
+        <h2>Dados da Empresa</h2>
+        <div class="grid">
+          <label>Nome/Razão Social
+            <input type="text" name="company_name" required placeholder="Ex.: Studio ABC" />
+          </label>
+          <label>CNPJ/CPF
+            <input type="text" name="company_doc" placeholder="Ex.: 12.345.678/0001-90" />
+          </label>
+        </div>
+        <label>Endereço
+          <input type="text" name="company_address" placeholder="Rua, número, bairro, cidade, UF" />
+        </label>
+        <label>Logo (PNG/JPG até 2MB)
+          <input type="file" name="logo" accept="image/png,image/jpeg" />
+        </label>
+
+        <h2>Dados do Cliente</h2>
+        <div class="grid">
+          <label>Nome/Razão Social
+            <input type="text" name="client_name" required placeholder="Ex.: João da Silva" />
+          </label>
+          <label>CPF/CNPJ
+            <input type="text" name="client_doc" placeholder="Ex.: 123.456.789-00" />
+          </label>
+        </div>
+
+        <h2>Documento</h2>
+        <div class="grid">
+          <label>Número
+            <input type="text" name="doc_number" placeholder="Ex.: 2025-001" />
+          </label>
+          <label>Data
+            <input type="date" name="issue_date" />
+          </label>
+        </div>
+        <label>Descrição
+          <textarea name="description" rows="4" placeholder="Descreva o serviço/produto prestado..."></textarea>
+        </label>
+        <label>Valor (R$)
+          <input type="text" name="value" required placeholder="Ex.: 149,90" />
+        </label>
+
+        <button type="submit" class="btn">🔽 Gerar PDF</button>
+      </form>
+    </section>
+
+    <footer>
+      <small>Este documento é um recibo/nota simples e <strong>não substitui NF-e</strong>.</small>
+    </footer>
+  </main>
+  <script>
+    // Máscara simples para valor (opcional: melhor validar no backend também)
+    const valueInput = document.querySelector('input[name="value"]');
+    if (valueInput) {
+      valueInput.addEventListener('blur', () => {
+        let v = valueInput.value.replace(/[^\d,\.]/g, '').replace(/\./g, '').replace(',', '.');
+        if (!v) return;
+        const n = parseFloat(v);
+        if (!isNaN(n)) {
+          const s = n.toFixed(2).replace('.', ',');
+          valueInput.value = s;
+        }
+      });
+    }
+  </script>
+</body>
+</html>
