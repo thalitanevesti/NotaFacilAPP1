@@ -2,18 +2,19 @@ import os
 from datetime import datetime
 from io import BytesIO
 
-from flask import Flask, render_template, request, send_file, abort
+from flask import Flask, render_template, request, send_file, abort, jsonify
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from dotenv import load_dotenv
 from utils.pdf import build_pdf
-
 import jwt
+import smtplib, ssl
+from email.message import EmailMessage
+from datetime import timedelta
 
-load_dotenv()  # carrega .env em dev
+load_dotenv()
 app = Flask(__name__)
 
-# Configurações
 app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024  # 2MB para upload do logo
 DISABLE_AUTH = os.getenv("DISABLE_AUTH", "false").lower() == "true"
 JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret")
@@ -21,7 +22,7 @@ JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret")
 limiter = Limiter(get_remote_address, app=app, default_limits=["30 per minute"])
 
 def _verify_token():
-    \"\"\"Verifica token JWT da querystring (?t=...). Retorna payload ou None.\"\"\"
+    """Verifica token JWT da querystring (?t=...). Retorna payload ou None."""
     if DISABLE_AUTH:
         return {"email": "dev@local", "dev": True}
     token = request.args.get("t")
@@ -32,6 +33,7 @@ def _verify_token():
         return payload
     except Exception:
         return None
+
 
 @app.get("/health")
 def health():
