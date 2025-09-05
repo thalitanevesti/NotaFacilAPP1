@@ -15,13 +15,16 @@ import jwt
 from utils.pdf import build_pdf
 
 # ======================================================
-# Configuração base
+# Setup base
 # ======================================================
 load_dotenv()
 app = Flask(__name__)
 
+def _truthy(val):
+    return str(val).strip().lower() in ("1", "true", "yes", "on")
+
 app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024  # 2MB para upload do logo
-DISABLE_AUTH = os.getenv("DISABLE_AUTH", "false").lower() == "true"
+DISABLE_AUTH = _truthy(os.getenv("DISABLE_AUTH", "false"))
 JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret")
 
 limiter = Limiter(get_remote_address, app=app, default_limits=["30 per minute"])
@@ -33,12 +36,38 @@ def _verify_token():
         return {"email": "dev@local", "dev": True}
     token = request.args.get("t")
     if not token:
+        print("[AUTH] Sem token (?t=...) na URL")
         return None
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
         return payload
-    except Exception:
+    except Exception as e:
+        print(f"[AUTH] Falha ao decodificar JWT: {e}")
         return None
+
+
+# ======================================================
+# Debug helpers
+# ======================================================
+@app.get("/debug/env")
+def debug_env():
+    return {
+        "disable_auth": DISABLE_AUTH,
+        "app_url": os.getenv("APP_URL", ""),
+        "jwt_secret_set": bool(os.getenv("JWT_SECRET", "")),
+    }, 200
+
+
+@app.get("/debug/make_token")
+def make_token():
+    email = (request.args.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"ok": False, "error": "use /debug/make_token?email=voce@ex.com"}), 400
+    exp = datetime.utcnow() + timedelta(days=365)
+    token = jwt.encode({"email": email, "exp": exp}, JWT_SECRET, algorithm="HS256")
+    app_url = os.getenv("APP_URL", "https://notafacilapp1.onrender.com")
+    link = f"{app_url}/?t={token}"
+    return jsonify({"ok": True, "link": link})
 
 
 # ======================================================
@@ -126,7 +155,7 @@ def generate_pdf():
 
 
 # ======================================================
-# Funções auxiliares de e-mail e webhook
+# E-mail & Webhook helpers
 # ======================================================
 def send_access_email(to_email: str, access_link: str) -> None:
     SMTP_HOST = os.getenv("SMTP_HOST")
@@ -171,7 +200,7 @@ def _extract_hotmart_fields(payload: dict):
     status = (purchase.get("status") or "").upper()
     transaction = purchase.get("transaction") or purchase.get("transaction_id") or ""
 
-    # Fallback para testes antigos
+    # Fallback para testes antigos/simples
     if not email:
         email = (payload.get("buyer_email") or payload.get("email") or "").strip().lower()
     if not status:
@@ -185,7 +214,7 @@ def _extract_hotmart_fields(payload: dict):
 # ======================================================
 @app.post("/webhook/hotmart")
 def hotmart_webhook():
-    # 1) Valida segredo se vier no header (opcional)
+    # 1) Valida segredo se vier no header (opcional na sua conta)
     expected = os.getenv("WEBHOOK_SECRET")
     got = request.headers.get("x-hotmart-secret")
     if expected and got and expected != got:
@@ -204,13 +233,13 @@ def hotmart_webhook():
     if status not in {"APPROVED", "PAID"}:
         return jsonify({"ok": True, "ignored": status or event}), 200
 
-    # 4) Gera token JWT
+    # 4) Gera token JWT e link
+    app_url = os.getenv("APP_URL", "https://notafacilapp1.onrender.com")
     exp = datetime.utcnow() + timedelta(days=365)
     token = jwt.encode({"email": buyer_email, "exp": exp}, JWT_SECRET, algorithm="HS256")
-    app_url = os.getenv("APP_URL", "https://notafacilapp1.onrender.com")
     access_link = f"{app_url}/?t={token}"
 
-    # 5) Envia e-mail em background
+    # 5) Envia e-mail em background (evita 408)
     def _bg_send():
         try:
             import socket
@@ -221,7 +250,7 @@ def hotmart_webhook():
 
     Thread(target=_bg_send, daemon=True).start()
 
-    # 6) Responde rápido
+    # 6) Responde rápido para a Hotmart
     return jsonify({"ok": True, "email": buyer_email, "link": access_link}), 200
 
 
