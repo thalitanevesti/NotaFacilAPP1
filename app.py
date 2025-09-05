@@ -108,71 +108,36 @@ def generate_pdf():
     )
 
 
-    # --- Hotmart Webhook Integration ---
-    from flask import jsonify
-    import smtplib, ssl
-    from email.message import EmailMessage
-    from datetime import timedelta
+ @app.post("/webhook/hotmart")
+def hotmart_webhook():
+    expected = os.getenv("HOTMART_SECRET")
+    got = request.headers.get("X-Hotmart-Secret")
+    if expected and expected != got:
+        return jsonify({"ok": False, "error": "invalid signature"}), 401
 
-def send_access_email(to_email: str, access_link: str) -> None:
-    SMTP_HOST = os.getenv("SMTP_HOST")
-    SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-    SMTP_USER = os.getenv("SMTP_USER")
-    SMTP_PASS = os.getenv("SMTP_PASS")
-    FROM_EMAIL = os.getenv("FROM_EMAIL", "no-reply@seuapp.com")
+    data = request.json or request.form.to_dict()
+    buyer_email = (data.get("buyer_email") or data.get("email") or "").strip().lower()
+    status = (data.get("status") or data.get("purchase_status") or "").upper()
 
-    if not all([SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS]):
-        raise RuntimeError("SMTP não configurado")
+    if not buyer_email:
+        return jsonify({"ok": False, "error": "missing email"}), 400
 
-    msg = EmailMessage()
-    msg["Subject"] = "Seu acesso ao Nota Fácil Lite"
-    msg["From"] = FROM_EMAIL
-    msg["To"] = to_email
+    if status not in {"APPROVED", "PAID"}:
+        return jsonify({"ok": True, "ignored": status}), 200
 
-    body = (
-        "Olá!\n\n"
-        "Obrigado pela compra. Acesse seu app por este link:\n"
-        f"{access_link}\n\n"
-        "Guarde este e-mail. Qualquer dúvida, responda por aqui.\n"
-    )
-    msg.set_content(body)
+    exp = datetime.utcnow() + timedelta(days=365)
+    token = jwt.encode({"email": buyer_email, "exp": exp}, JWT_SECRET, algorithm="HS256")
 
-    context = ssl.create_default_context()
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as s:
-        s.starttls(context=context)
-        s.login(SMTP_USER, SMTP_PASS)
-        s.send_message(msg)
+    app_url = os.getenv("APP_URL", "https://nota-facil-lite.onrender.com")
+    access_link = f"{app_url}/?t={token}"
 
+    try:
+        send_access_email(buyer_email, access_link)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"email fail: {e}"}), 500
 
-    @app.post("/hotmart/webhook")
-    def hotmart_webhook():
-        expected = os.getenv("HOTMART_SECRET")
-        got = request.headers.get("X-Hotmart-Secret")
-        if expected and expected != got:
-            return jsonify({"ok": False, "error": "invalid signature"}), 401
+    return jsonify({"ok": True, "email": buyer_email, "link": access_link})
 
-        data = request.json or request.form.to_dict()
-        buyer_email = (data.get("buyer_email") or data.get("email") or "").strip().lower()
-        status = (data.get("status") or data.get("purchase_status") or "").upper()
-
-        if not buyer_email:
-            return jsonify({"ok": False, "error": "missing email"}), 400
-
-        if status not in {"APPROVED", "PAID"}:
-            return jsonify({"ok": True, "ignored": status}), 200
-
-        exp = datetime.utcnow() + timedelta(days=365)
-        token = jwt.encode({"email": buyer_email, "exp": exp}, JWT_SECRET, algorithm="HS256")
-
-        app_url = os.getenv("APP_URL", "https://nota-facil-lite.onrender.com")
-        access_link = f"{app_url}/?t={token}"
-
-        try:
-            send_access_email(buyer_email, access_link)
-        except Exception as e:
-            return jsonify({"ok": False, "error": f"email fail: {e}"}), 500
-
-        return jsonify({"ok": True, "email": buyer_email, "link": access_link})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=True)
