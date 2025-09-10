@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: notafacil-lite
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -w 2 -k gthread -t 120 app:app
+    envVars:
+      - key: APP_NAME
+        value: Nota Fácil Lite
+      - key: APP_BASE_URL
+        value: https://SEUAPP.onrender.com
